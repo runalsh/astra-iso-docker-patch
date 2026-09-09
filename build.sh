@@ -227,16 +227,16 @@ for target in "${TARGETS[@]}"; do
 
   log_step "Processing release: tag='${tag}', source='${source}'"
 
-  FULL_IMAGE_TAG="${IMAGE_NAME}:${tag}-${PRESET_CHOICE}"
+  FULL_IMAGE_TAG="${IMAGE_NAME}:${tag}"
   GHCR_IMAGE_NAME="ghcr.io/$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
-  FULL_GHCR_TAG="${GHCR_IMAGE_NAME}:${tag}-${PRESET_CHOICE}"
+  FULL_GHCR_TAG="${GHCR_IMAGE_NAME}:${tag}"
 
   # Remote registry check
   if [ "$SKIP_EXISTS_CHECK" != "true" ]; then
     dh_exists=false
     ghcr_exists=false
     if [ "$PUSH_TO_DOCKERHUB" = "true" ]; then
-      if docker manifest inspect "${FULL_IMAGE_TAG}" &>/dev/null || curl -sfSL "https://hub.docker.com/v2/repositories/${IMAGE_NAME}/tags/${tag}-${PRESET_CHOICE}/" &>/dev/null; then
+      if docker manifest inspect "${FULL_IMAGE_TAG}" &>/dev/null || curl -sfSL "https://hub.docker.com/v2/repositories/${IMAGE_NAME}/tags/${tag}/" &>/dev/null; then
         dh_exists=true
       fi
     else
@@ -273,11 +273,7 @@ for target in "${TARGETS[@]}"; do
     if [ "${CLEANUP_DOCKER_IMAGES:-false}" = "true" ]; then
       log_info "Pruning local Docker images for this tag to free disk space..."
       docker rmi -f "${FULL_IMAGE_TAG}" "${FULL_GHCR_TAG}" 2>/dev/null || true
-      if [ "$PRESET_CHOICE" = "server" ]; then
-        docker rmi -f "${IMAGE_NAME}:${tag}" "${GHCR_IMAGE_NAME}:${tag}" 2>/dev/null || true
-      fi
       for extra_tag in "${ALL_EXTRA_TAGS[@]:-}"; do
-        docker rmi -f "${IMAGE_NAME}:${extra_tag}-${PRESET_CHOICE}" "${GHCR_IMAGE_NAME}:${extra_tag}-${PRESET_CHOICE}" 2>/dev/null || true
         docker rmi -f "${IMAGE_NAME}:${extra_tag}" "${GHCR_IMAGE_NAME}:${extra_tag}" 2>/dev/null || true
       done
     fi
@@ -573,24 +569,11 @@ EOF_OFFICIAL_APT
 
   docker tag "${FULL_IMAGE_TAG}" "${FULL_GHCR_TAG}"
 
-  # Default preset also gets unqualified version tags (e.g. runalsh/astra-iso-patch:1.8.6)
-  if [ "$PRESET_CHOICE" = "server" ]; then
-    docker tag "${FULL_IMAGE_TAG}" "${IMAGE_NAME}:${tag}"
-    docker tag "${FULL_IMAGE_TAG}" "${GHCR_IMAGE_NAME}:${tag}"
-  fi
-
   for extra_tag in "${ALL_EXTRA_TAGS[@]}"; do
-    ext_t="${extra_tag}-${PRESET_CHOICE}"
-    
-    log_exec "docker tag ${FULL_IMAGE_TAG} ${IMAGE_NAME}:${ext_t}"
-    docker tag "${FULL_IMAGE_TAG}" "${IMAGE_NAME}:${ext_t}"
-    log_exec "docker tag ${FULL_IMAGE_TAG} ${GHCR_IMAGE_NAME}:${ext_t}"
-    docker tag "${FULL_IMAGE_TAG}" "${GHCR_IMAGE_NAME}:${ext_t}"
-
-    if [ "$PRESET_CHOICE" = "server" ]; then
-      docker tag "${FULL_IMAGE_TAG}" "${IMAGE_NAME}:${extra_tag}"
-      docker tag "${FULL_IMAGE_TAG}" "${GHCR_IMAGE_NAME}:${extra_tag}"
-    fi
+    log_exec "docker tag ${FULL_IMAGE_TAG} ${IMAGE_NAME}:${extra_tag}"
+    docker tag "${FULL_IMAGE_TAG}" "${IMAGE_NAME}:${extra_tag}"
+    log_exec "docker tag ${FULL_IMAGE_TAG} ${GHCR_IMAGE_NAME}:${extra_tag}"
+    docker tag "${FULL_IMAGE_TAG}" "${GHCR_IMAGE_NAME}:${extra_tag}"
   done
 
   if [ "$TEST_VERSION" = "true" ]; then
@@ -607,28 +590,16 @@ EOF_OFFICIAL_APT
   if [ "$PUSH_TO_DOCKERHUB" = "true" ]; then
     log_step "Pushing to Docker Hub: ${FULL_IMAGE_TAG}"
     docker push "${FULL_IMAGE_TAG}"
-    if [ "$PRESET_CHOICE" = "server" ]; then
-      docker push "${IMAGE_NAME}:${tag}"
-    fi
     for extra_tag in "${ALL_EXTRA_TAGS[@]}"; do
-      docker push "${IMAGE_NAME}:${extra_tag}-${PRESET_CHOICE}"
-      if [ "$PRESET_CHOICE" = "server" ]; then
-        docker push "${IMAGE_NAME}:${extra_tag}"
-      fi
+      docker push "${IMAGE_NAME}:${extra_tag}"
     done
   fi
 
   if [ "$PUSH_TO_GHCR" = "true" ]; then
     log_step "Pushing to GHCR: ${FULL_GHCR_TAG}"
     docker push "${FULL_GHCR_TAG}"
-    if [ "$PRESET_CHOICE" = "server" ]; then
-      docker push "${GHCR_IMAGE_NAME}:${tag}"
-    fi
     for extra_tag in "${ALL_EXTRA_TAGS[@]}"; do
-      docker push "${GHCR_IMAGE_NAME}:${extra_tag}-${PRESET_CHOICE}"
-      if [ "$PRESET_CHOICE" = "server" ]; then
-        docker push "${GHCR_IMAGE_NAME}:${extra_tag}"
-      fi
+      docker push "${GHCR_IMAGE_NAME}:${extra_tag}"
     done
   fi
 
