@@ -1,4 +1,18 @@
-# Astra Linux ISO Releases for Docker Builder
-# Format: <tag> <iso_path_or_url>
-# Example:
-# 1.8.6 /root/astra installation-1.8.6.39-17.06.2026_11.39-di.iso
+# Astra Linux ISO Releases from Cloud Storage
+# Format: <tag> <iso_filename>
+1.8.6 astra installation-1.8.6.39-17.06.2026_11.39-di.iso
+# 1.8.5 astra installation-1.8.5.46-11.02.26_01.30-di.iso
+# 1.8.4 astra installation-1.8.4.48-30.10.25_09.18-di.iso
+# 1.8.3 astra installation-1.8.3.7-30.07.25_11.19-di.iso
+# 1.8.2 astra installation-1.8.2.7-03.04.25_13.29-di.iso
+# 1.8.1 astra installation-1.8.1.6-27.06.2024_14.12-di.iso
+# 1.7.10 astra installation-1.7.10.72-07.04.2026_12.15.iso
+# 1.7.9 astra installation-1.7.9.41-20.11.25_23.15.iso
+# 1.7.8 astra installation-1.7.8.6-16.09.25_14.55.iso
+# 1.7.7 astra installation-1.7.7.6-10.03.25_13.44.iso
+# 1.7.6 astra installation-1.7.6.11-26.08.24_17.26.iso
+# 1.7.5 astra installation-1.7.5.9-16.10.23_16.58.iso
+# 1.7.4 astra installation-1.7.4-24.04.2023_14.23.iso
+# 1.7.3 astra installation-1.7.3-03.11.2022_15.53.iso
+# 1.7.2 astra installation-1.7.2-11.08.2022_15.28.iso
+# 1.7.1 astra installation-1.7.1-22.11.2021_10.50.iso
