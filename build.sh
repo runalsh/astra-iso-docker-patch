@@ -266,7 +266,7 @@ for target in "${TARGETS[@]}"; do
     s umount -f "$ROOTFS_DIR/media/iso" 2>/dev/null || true
     s umount -f "$MNT_DIR" 2>/dev/null || true
     s rm -rf "$MNT_DIR" "$ROOTFS_DIR" "$HELPER_DIR"
-    if [ -n "${LOCAL_ISO:-}" ] && [ -f "$LOCAL_ISO" ]; then
+    if [ -n "${LOCAL_ISO:-}" ] && [[ "$LOCAL_ISO" =~ ^/tmp/astra-iso-patch_download_.*\.iso$ ]] && [ -f "$LOCAL_ISO" ]; then
       log_info "Removing downloaded temporary ISO: $LOCAL_ISO"
       rm -f "$LOCAL_ISO"
     fi
@@ -388,15 +388,32 @@ for target in "${TARGETS[@]}"; do
     SCRIPT_ARG="/usr/share/debootstrap/scripts/${DETECTED_CODENAME}"
   fi
 
-  log_exec "debootstrap --no-check-gpg --include=sudo,curl,ca-certificates ${DETECTED_CODENAME} ${ROOTFS_DIR} file://${MNT_DIR} ${SCRIPT_ARG}"
+  COMMA_COMPONENTS=$(echo "$DETECTED_COMPONENTS" | tr ' ' ',')
+  BOOTSTRAP_INCLUDE="sudo,curl,ca-certificates"
+  if find "$MNT_DIR/pool" -type f -name "libparsec-base3*.deb" 2>/dev/null | grep -q .; then
+    BOOTSTRAP_INCLUDE="${BOOTSTRAP_INCLUDE},libparsec-base3"
+  elif find "$MNT_DIR/pool" -type f -name "libparsec-base*.deb" 2>/dev/null | grep -q .; then
+    BOOTSTRAP_INCLUDE="${BOOTSTRAP_INCLUDE},libparsec-base"
+  fi
 
-  s env DEBOOTSTRAP_DIR="$DEBOOTSTRAP_DIR_PATH" "$DEBOOTSTRAP_BIN" \
+  log_exec "debootstrap --no-check-gpg --components=${COMMA_COMPONENTS} --include=${BOOTSTRAP_INCLUDE} ${DETECTED_CODENAME} ${ROOTFS_DIR} file://${MNT_DIR} ${SCRIPT_ARG}"
+
+  if ! s env DEBOOTSTRAP_DIR="$DEBOOTSTRAP_DIR_PATH" "$DEBOOTSTRAP_BIN" \
     --no-check-gpg \
-    --include="sudo,curl,ca-certificates" \
+    --components="${COMMA_COMPONENTS}" \
+    --include="${BOOTSTRAP_INCLUDE}" \
     "${DETECTED_CODENAME}" \
     "${ROOTFS_DIR}" \
     "file://${MNT_DIR}" \
-    ${SCRIPT_ARG:+"$SCRIPT_ARG"}
+    ${SCRIPT_ARG:+"$SCRIPT_ARG"}; then
+      log_error "Debootstrap failed!"
+      if [ -f "$ROOTFS_DIR/debootstrap/debootstrap.log" ]; then
+        echo -e "${C_RED}=== debootstrap.log (last 100 lines) ===${C_RESET}"
+        s tail -n 100 "$ROOTFS_DIR/debootstrap/debootstrap.log"
+        echo -e "${C_RED}========================================${C_RESET}"
+      fi
+      exit 1
+  fi
 
   log_step "Configuring container chroot and mounting ISO repository"
   s mkdir -p "$ROOTFS_DIR/media/iso"
