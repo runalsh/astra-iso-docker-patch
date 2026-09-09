@@ -99,7 +99,7 @@ jobs:
           ASTRA_CLOUD_URL: ${{ secrets.ASTRA_CLOUD_URL }}
           PUSH_TO_DOCKERHUB: ${{ secrets.DOCKERHUB_TOKEN != '' }}
           PUSH_TO_GHCR: 'true'
-          CLEANUP_DOCKER_IMAGES: 'false'
+          CLEANUP_DOCKER_IMAGES: 'true'
           SKIP_EXISTS_CHECK: ${{ github.event.inputs.force_rebuild || 'false' }}
         run: |
           PRESET="${{ github.event.inputs.preset || 'server' }}"

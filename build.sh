@@ -153,7 +153,12 @@ declare -a TARGETS=()
 
 if [ ${#CLI_ISOS[@]} -gt 0 ]; then
   for item in "${CLI_ISOS[@]}"; do
-    if [[ "$item" =~ ^https?:// ]]; then
+    if [ -f "$RELEASES_FILE" ] && grep -qE "^${item}[[:space:]]+" "$RELEASES_FILE"; then
+      matched_line=$(grep -E "^${item}[[:space:]]+" "$RELEASES_FILE" | head -n1)
+      matched_tag=$(echo "$matched_line" | awk '{print $1}')
+      matched_src=$(echo "$matched_line" | awk '{$1=""; print $0}' | sed -e 's/^[[:space:]]*//')
+      TARGETS+=("$matched_tag|$matched_src")
+    elif [[ "$item" =~ ^https?:// ]]; then
       tag=$(basename "$item" .iso | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 || echo "latest")
       TARGETS+=("$tag|$item")
     elif [ -f "$item" ]; then
@@ -162,7 +167,7 @@ if [ ${#CLI_ISOS[@]} -gt 0 ]; then
     elif [ -n "${ASTRA_CLOUD_URL:-${MAILRU_PUBLIC_URL:-}}" ]; then
       TARGETS+=("$item|$item")
     else
-      log_warn "File '$item' not found, skipping."
+      log_warn "File or tag '$item' not found, skipping."
     fi
   done
 elif [ -f "$RELEASES_FILE" ]; then
@@ -261,13 +266,16 @@ for target in "${TARGETS[@]}"; do
     s umount -f "$ROOTFS_DIR/media/iso" 2>/dev/null || true
     s umount -f "$MNT_DIR" 2>/dev/null || true
     s rm -rf "$MNT_DIR" "$ROOTFS_DIR" "$HELPER_DIR"
-    if [[ "$source" =~ ^https?:// ]] && [ -f "${LOCAL_ISO:-}" ]; then
+    if [ -n "${LOCAL_ISO:-}" ] && [ -f "$LOCAL_ISO" ]; then
       log_info "Removing downloaded temporary ISO: $LOCAL_ISO"
       rm -f "$LOCAL_ISO"
     fi
     if [ "${CLEANUP_DOCKER_IMAGES:-false}" = "true" ]; then
       log_info "Pruning local Docker images for this tag to free disk space..."
       docker rmi -f "${FULL_IMAGE_TAG}" "${FULL_GHCR_TAG}" 2>/dev/null || true
+      if [ "$PRESET_CHOICE" = "server" ]; then
+        docker rmi -f "${IMAGE_NAME}:${tag}" "${GHCR_IMAGE_NAME}:${tag}" 2>/dev/null || true
+      fi
       for extra_tag in "${ALL_EXTRA_TAGS[@]:-}"; do
         docker rmi -f "${IMAGE_NAME}:${extra_tag}-${PRESET_CHOICE}" "${GHCR_IMAGE_NAME}:${extra_tag}-${PRESET_CHOICE}" 2>/dev/null || true
         docker rmi -f "${IMAGE_NAME}:${extra_tag}" "${GHCR_IMAGE_NAME}:${extra_tag}" 2>/dev/null || true
@@ -496,8 +504,8 @@ EOF_APTLIST
 
   log_info "Configuring official remote Astra Linux APT repositories in /etc/apt/sources.list..."
   cat << EOF_OFFICIAL_APT | s tee "$ROOTFS_DIR/etc/apt/sources.list" >/dev/null
-deb https://download.astralinux.ru/astra/stable/${DETECTED_CODENAME}/repository-main/ ${DETECTED_CODENAME} main contrib non-free non-free-firmware
-deb https://download.astralinux.ru/astra/stable/${DETECTED_CODENAME}/repository-extended/ ${DETECTED_CODENAME} main contrib non-free non-free-firmware
+deb https://download.astralinux.ru/astra/stable/${DETECTED_CODENAME}/repository-main/ ${DETECTED_CODENAME} ${DETECTED_COMPONENTS}
+deb https://download.astralinux.ru/astra/stable/${DETECTED_CODENAME}/repository-extended/ ${DETECTED_CODENAME} ${DETECTED_COMPONENTS}
 EOF_OFFICIAL_APT
 
   log_step "Importing rootfs into Docker -> ${FULL_IMAGE_TAG}"
@@ -543,8 +551,16 @@ EOF_OFFICIAL_APT
 
   declare -a ALL_EXTRA_TAGS=()
   [ -n "$PATCH_VER" ] && [ "$PATCH_VER" != "$tag" ] && ALL_EXTRA_TAGS+=("$PATCH_VER")
-  [ -n "$MINOR_VER" ] && [ "$MINOR_VER" != "$PATCH_VER" ] && ALL_EXTRA_TAGS+=("$MINOR_VER")
-  [ -n "$MAJOR_VER" ] && ALL_EXTRA_TAGS+=("$MAJOR_VER")
+  [ -n "$MINOR_VER" ] && [ "$MINOR_VER" != "$tag" ] && [ "$MINOR_VER" != "$PATCH_VER" ] && ALL_EXTRA_TAGS+=("$MINOR_VER")
+  [ -n "$MAJOR_VER" ] && [ "$MAJOR_VER" != "$tag" ] && [ "$MAJOR_VER" != "$PATCH_VER" ] && [ "$MAJOR_VER" != "$MINOR_VER" ] && ALL_EXTRA_TAGS+=("$MAJOR_VER")
+
+  docker tag "${FULL_IMAGE_TAG}" "${FULL_GHCR_TAG}"
+
+  # Default preset also gets unqualified version tags (e.g. runalsh/astra-iso-patch:1.8.6)
+  if [ "$PRESET_CHOICE" = "server" ]; then
+    docker tag "${FULL_IMAGE_TAG}" "${IMAGE_NAME}:${tag}"
+    docker tag "${FULL_IMAGE_TAG}" "${GHCR_IMAGE_NAME}:${tag}"
+  fi
 
   for extra_tag in "${ALL_EXTRA_TAGS[@]}"; do
     ext_t="${extra_tag}-${PRESET_CHOICE}"
@@ -554,13 +570,11 @@ EOF_OFFICIAL_APT
     log_exec "docker tag ${FULL_IMAGE_TAG} ${GHCR_IMAGE_NAME}:${ext_t}"
     docker tag "${FULL_IMAGE_TAG}" "${GHCR_IMAGE_NAME}:${ext_t}"
 
-    # Default preset also gets unqualified version tags (e.g. runalsh/astra-iso-patch:1.8.6)
     if [ "$PRESET_CHOICE" = "server" ]; then
       docker tag "${FULL_IMAGE_TAG}" "${IMAGE_NAME}:${extra_tag}"
       docker tag "${FULL_IMAGE_TAG}" "${GHCR_IMAGE_NAME}:${extra_tag}"
     fi
   done
-  docker tag "${FULL_IMAGE_TAG}" "${FULL_GHCR_TAG}"
 
   if [ "$TEST_VERSION" = "true" ]; then
     log_step "Validating generated Docker image"
@@ -576,6 +590,9 @@ EOF_OFFICIAL_APT
   if [ "$PUSH_TO_DOCKERHUB" = "true" ]; then
     log_step "Pushing to Docker Hub: ${FULL_IMAGE_TAG}"
     docker push "${FULL_IMAGE_TAG}"
+    if [ "$PRESET_CHOICE" = "server" ]; then
+      docker push "${IMAGE_NAME}:${tag}"
+    fi
     for extra_tag in "${ALL_EXTRA_TAGS[@]}"; do
       docker push "${IMAGE_NAME}:${extra_tag}-${PRESET_CHOICE}"
       if [ "$PRESET_CHOICE" = "server" ]; then
@@ -587,6 +604,9 @@ EOF_OFFICIAL_APT
   if [ "$PUSH_TO_GHCR" = "true" ]; then
     log_step "Pushing to GHCR: ${FULL_GHCR_TAG}"
     docker push "${FULL_GHCR_TAG}"
+    if [ "$PRESET_CHOICE" = "server" ]; then
+      docker push "${GHCR_IMAGE_NAME}:${tag}"
+    fi
     for extra_tag in "${ALL_EXTRA_TAGS[@]}"; do
       docker push "${GHCR_IMAGE_NAME}:${extra_tag}-${PRESET_CHOICE}"
       if [ "$PRESET_CHOICE" = "server" ]; then
