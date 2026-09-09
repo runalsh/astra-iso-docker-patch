@@ -1,0 +1,4 @@
+# Astra Linux ISO Releases for Docker Builder
+# Format: <tag> <iso_path_or_url>
+# Example:
+# 1.8.6 /root/astra installation-1.8.6.39-17.06.2026_11.39-di.iso

@@ -1,0 +1,107 @@
+name: Build and Push Astra Linux Docker Images
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'releases.txt'
+      - 'build.sh'
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild even if tag exists in registry'
+        type: boolean
+        required: false
+        default: false
+      preset:
+        description: 'Preset to build (server|minimal)'
+        required: false
+        default: 'server'
+
+jobs:
+  select-runner:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      runner_type: ${{ steps.check.outputs.runner_type }}
+    steps:
+      - name: Check if phylex runner is online
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GH_PAT || secrets.PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          RESPONSE=$(gh api "repos/${{ github.repository }}/actions/runners" 2>/dev/null || true)
+          STATUS=$(echo "$RESPONSE" | jq -r '.runners[]? | select(.name=="phylex") | .status' 2>/dev/null || echo "offline")
+          if [ "$STATUS" = "online" ]; then
+            echo "Runner phylex is ONLINE."
+            HAS_LABEL=$(echo "$RESPONSE" | jq -r '.runners[] | select(.name=="phylex") | .labels[]? | select(.name=="phylex") | .name' 2>/dev/null || true)
+            if [ "$HAS_LABEL" = "phylex" ]; then
+              echo 'runner_type=["self-hosted", "phylex"]' >> "$GITHUB_OUTPUT"
+            else
+              echo 'runner_type=["self-hosted"]' >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "Runner phylex is not available ($STATUS). Falling back to ubuntu-latest."
+            echo 'runner_type=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  build-and-push:
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner_type) }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          if command -v apt-get &>/dev/null; then
+            sudo apt-get update -qq || true
+            sudo apt-get install -y -qq debootstrap dpkg binutils p7zip-full curl tar gzip xz-utils || true
+          elif command -v dnf &>/dev/null; then
+            sudo dnf install -y -q debootstrap dpkg binutils p7zip curl tar gzip xz || true
+          elif command -v yum &>/dev/null; then
+            sudo yum install -y -q debootstrap dpkg binutils p7zip curl tar gzip xz || true
+          fi
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request' && env.DOCKERHUB_TOKEN != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Make build script executable
+        run: chmod +x build.sh
+
+      - name: Build, verify and push images
+        env:
+          PUSH_TO_DOCKERHUB: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+          PUSH_TO_GHCR: 'true'
+          CLEANUP_DOCKER_IMAGES: 'false'
+          SKIP_EXISTS_CHECK: ${{ github.event.inputs.force_rebuild || 'false' }}
+        run: |
+          PRESET="${{ github.event.inputs.preset || 'server' }}"
+          ./build.sh --preset "$PRESET"
+
+      - name: Cleanup Temporary Mounts and Files
+        if: always()
+        run: |
+          sudo umount -f /tmp/astra-iso-patch_* 2>/dev/null || true
+          sudo rm -rf /tmp/astra-iso-patch_* 2>/dev/null || true
