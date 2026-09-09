@@ -331,17 +331,32 @@ for target in "${TARGETS[@]}"; do
     DETECTED_VERSION="$tag"
   fi
 
-  log_info "Detected ISO Codename: ${DETECTED_CODENAME}, Version: ${DETECTED_VERSION}"
+  # Detect components from Release file if present
+  DETECTED_COMPONENTS="main contrib non-free"
+  RELEASE_FILE="$MNT_DIR/dists/$DETECTED_CODENAME/Release"
+  if [ -f "$RELEASE_FILE" ]; then
+    comps=$(grep -E '^[Cc]omponents:' "$RELEASE_FILE" | head -n1 | cut -d: -f2- || true)
+    if [ -n "$comps" ]; then
+      DETECTED_COMPONENTS=$(echo "$comps" | xargs)
+    fi
+  fi
+  log_info "Detected ISO Codename: ${DETECTED_CODENAME}, Version: ${DETECTED_VERSION}, Components: ${DETECTED_COMPONENTS}"
 
   log_step "Extracting Astra Linux native debootstrap package from ISO"
   DEBOOTSTRAP_DEB=$(find "$MNT_DIR/pool" -type f -name "debootstrap_*.deb" 2>/dev/null | head -n1 || true)
   if [ -n "$DEBOOTSTRAP_DEB" ] && [ -f "$DEBOOTSTRAP_DEB" ]; then
     log_info "Found Astra debootstrap: $DEBOOTSTRAP_DEB"
-    (
-      cd "$HELPER_DIR"
-      ar -x "$DEBOOTSTRAP_DEB"
-      tar -xf data.tar.*
-    )
+    s chmod -R 777 "$HELPER_DIR"
+    if command -v dpkg-deb &>/dev/null; then
+      s dpkg-deb -x "$DEBOOTSTRAP_DEB" "$HELPER_DIR"
+    else
+      (
+        cd "$HELPER_DIR"
+        s ar -x "$DEBOOTSTRAP_DEB"
+        s tar -xf data.tar.*
+      )
+    fi
+    s chmod -R 777 "$HELPER_DIR"
     DEBOOTSTRAP_BIN="$HELPER_DIR/usr/sbin/debootstrap"
     DEBOOTSTRAP_DIR_PATH="$HELPER_DIR/usr/share/debootstrap"
   else
@@ -372,7 +387,7 @@ EOF_POLICY
 
   # Setup temporary offline APT repo for chroot
   cat << EOF_APTLIST | s tee "$ROOTFS_DIR/etc/apt/sources.list" >/dev/null
-deb [trusted=yes] file:/media/iso ${DETECTED_CODENAME} main contrib non-free non-free-firmware
+deb [trusted=yes] file:/media/iso ${DETECTED_CODENAME} ${DETECTED_COMPONENTS}
 EOF_APTLIST
 
   s chroot "$ROOTFS_DIR" env DEBIAN_FRONTEND=noninteractive LC_ALL=C apt-get update -qq
@@ -382,7 +397,7 @@ EOF_APTLIST
     
     SERVER_PKGS=(
       # Base Administration & Console tools (Task: Base)
-      mc mc-data vim vim-runtime bash-completion p7zip-full 7zip unzip
+      mc mc-data vim vim-runtime bash-completion p7zip-full unzip
       lsof rsync wget bzip2 xz-utils zstd psmisc locales less nano bc file acl attr
       # Network & SSH Server (Task: Fly-ssh)
       openssh-server openssh-client openssh-sftp-server ufw iptables ethtool
@@ -399,10 +414,11 @@ EOF_APTLIST
     log_exec "apt-get install -y --no-install-recommends ${SERVER_PKGS[*]}"
     s chroot "$ROOTFS_DIR" env DEBIAN_FRONTEND=noninteractive LC_ALL=C \
       apt-get install -y -qq --no-install-recommends "${SERVER_PKGS[@]}" || {
-        log_warn "Some non-essential packages failed, installing core server utilities..."
-        s chroot "$ROOTFS_DIR" env DEBIAN_FRONTEND=noninteractive LC_ALL=C \
-          apt-get install -y -qq --no-install-recommends \
-            mc vim bash-completion p7zip-full unzip lsof rsync wget openssh-server ufw parsec-base || true
+        log_warn "Some non-essential packages failed, installing available server utilities individually..."
+        for p in "${SERVER_PKGS[@]}"; do
+          s chroot "$ROOTFS_DIR" env DEBIAN_FRONTEND=noninteractive LC_ALL=C \
+            apt-get install -y -qq --no-install-recommends "$p" 2>/dev/null || true
+        done
       }
   elif [ -n "$EXTRA_INCLUDE_PKGS" ]; then
     log_step "Installing user-specified packages: ${EXTRA_INCLUDE_PKGS}"
