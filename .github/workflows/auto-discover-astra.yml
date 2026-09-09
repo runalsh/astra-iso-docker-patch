@@ -1,0 +1,47 @@
+name: Auto Discover Astra Linux ISO Releases
+
+on:
+  schedule:
+    - cron: '0 3 * * 0' # Every Sunday at 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Scan Cloud Storage for Astra ISO releases
+        env:
+          ASTRA_CLOUD_URL: ${{ secrets.ASTRA_CLOUD_URL }}
+        run: |
+          if [ -z "$ASTRA_CLOUD_URL" ]; then
+            echo "Error: Secret ASTRA_CLOUD_URL is not set!" >&2
+            exit 1
+          fi
+          python3 discover_cloud_releases.py --populate-releases releases.txt
+
+      - name: Create Pull Request if new releases discovered
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "feat: auto-discovered new Astra Linux ISO releases"
+          title: "🚀 New Astra Linux ISO Releases Discovered"
+          body: |
+            Automated release discovery detected updates to Astra Linux ISO releases in cloud storage.
+            
+            `releases.txt` has been updated with new filenames (no sensitive URLs are exposed).
+            
+            Please review and merge this PR to trigger automated container builds.
+          branch: "auto-discover-astra-releases"
+          reviewers: "${{ github.repository_owner }}"

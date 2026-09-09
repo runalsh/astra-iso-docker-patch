@@ -92,6 +92,7 @@ jobs:
 
       - name: Build, verify and push images
         env:
+          ASTRA_CLOUD_URL: ${{ secrets.ASTRA_CLOUD_URL }}
           PUSH_TO_DOCKERHUB: ${{ secrets.DOCKERHUB_TOKEN != '' }}
           PUSH_TO_GHCR: 'true'
           CLEANUP_DOCKER_IMAGES: 'false'

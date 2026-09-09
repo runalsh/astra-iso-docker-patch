@@ -279,8 +279,16 @@ for target in "${TARGETS[@]}"; do
       ISO_SIZE=$(du -h "$LOCAL_ISO" | awk '{print $1}')
       log_success "Download complete. File size: ${ISO_SIZE}"
     fi
-  else
+  elif [ -f "$source" ]; then
     LOCAL_ISO="$source"
+  elif [ -n "${ASTRA_CLOUD_URL:-${MAILRU_PUBLIC_URL:-}}" ]; then
+    LOCAL_ISO="/tmp/astra-iso-patch_download_${RAND_ID}.iso"
+    log_info "ISO file not found locally on disk. Downloading from secure Cloud Mail.ru storage..."
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    python3 "$SCRIPT_DIR/discover_cloud_releases.py" --download "${tag}" --output "$LOCAL_ISO"
+  else
+    log_error "ISO source '$source' not found and ASTRA_CLOUD_URL is not configured!"
+    exit 1
   fi
 
   log_info "Mounting ISO image..."
