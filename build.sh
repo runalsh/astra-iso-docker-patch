@@ -359,20 +359,36 @@ for target in "${TARGETS[@]}"; do
     s chmod -R 777 "$HELPER_DIR"
     DEBOOTSTRAP_BIN="$HELPER_DIR/usr/sbin/debootstrap"
     DEBOOTSTRAP_DIR_PATH="$HELPER_DIR/usr/share/debootstrap"
+
+    # Install Astra scripts and functions into host debootstrap as well
+    if [ -d "$DEBOOTSTRAP_DIR_PATH/scripts" ]; then
+      s mkdir -p /usr/share/debootstrap/scripts
+      s cp -rf "$DEBOOTSTRAP_DIR_PATH"/scripts/* /usr/share/debootstrap/scripts/ 2>/dev/null || true
+      s cp -f "$DEBOOTSTRAP_DIR_PATH"/functions /usr/share/debootstrap/functions 2>/dev/null || true
+      s cp -f "$DEBOOTSTRAP_DIR_PATH"/devices.tar.gz /usr/share/debootstrap/devices.tar.gz 2>/dev/null || true
+    fi
   else
     DEBOOTSTRAP_BIN="$(command -v debootstrap)"
     DEBOOTSTRAP_DIR_PATH="/usr/share/debootstrap"
   fi
 
   log_step "Bootstrapping base Astra Linux rootfs via debootstrap"
-  log_exec "debootstrap --no-check-gpg --include=sudo,curl,ca-certificates ${DETECTED_CODENAME} ${ROOTFS_DIR} file://${MNT_DIR}"
+  SCRIPT_ARG=""
+  if [ -f "$DEBOOTSTRAP_DIR_PATH/scripts/${DETECTED_CODENAME}" ]; then
+    SCRIPT_ARG="$DEBOOTSTRAP_DIR_PATH/scripts/${DETECTED_CODENAME}"
+  elif [ -f "/usr/share/debootstrap/scripts/${DETECTED_CODENAME}" ]; then
+    SCRIPT_ARG="/usr/share/debootstrap/scripts/${DETECTED_CODENAME}"
+  fi
 
-  DEBOOTSTRAP_DIR="$DEBOOTSTRAP_DIR_PATH" s "$DEBOOTSTRAP_BIN" \
+  log_exec "debootstrap --no-check-gpg --include=sudo,curl,ca-certificates ${DETECTED_CODENAME} ${ROOTFS_DIR} file://${MNT_DIR} ${SCRIPT_ARG}"
+
+  s env DEBOOTSTRAP_DIR="$DEBOOTSTRAP_DIR_PATH" "$DEBOOTSTRAP_BIN" \
     --no-check-gpg \
     --include="sudo,curl,ca-certificates" \
     "${DETECTED_CODENAME}" \
     "${ROOTFS_DIR}" \
-    "file://${MNT_DIR}"
+    "file://${MNT_DIR}" \
+    ${SCRIPT_ARG:+"$SCRIPT_ARG"}
 
   log_step "Configuring container chroot and mounting ISO repository"
   s mkdir -p "$ROOTFS_DIR/media/iso"
