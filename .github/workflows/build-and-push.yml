@@ -19,6 +19,10 @@ on:
         description: 'Preset to build (server|minimal)'
         required: false
         default: 'server'
+      release:
+        description: 'Specific release tag to build (e.g. 1.8.6 or all)'
+        required: false
+        default: 'all'
 
 jobs:
   select-runner:
@@ -99,7 +103,12 @@ jobs:
           SKIP_EXISTS_CHECK: ${{ github.event.inputs.force_rebuild || 'false' }}
         run: |
           PRESET="${{ github.event.inputs.preset || 'server' }}"
-          ./build.sh --preset "$PRESET"
+          RELEASE="${{ github.event.inputs.release || 'all' }}"
+          if [ "$RELEASE" != "all" ] && [ -n "$RELEASE" ]; then
+            ./build.sh --preset "$PRESET" "$RELEASE"
+          else
+            ./build.sh --preset "$PRESET"
+          fi
 
       - name: Cleanup Temporary Mounts and Files
         if: always()

@@ -159,6 +159,8 @@ if [ ${#CLI_ISOS[@]} -gt 0 ]; then
     elif [ -f "$item" ]; then
       tag=$(basename "$item" .iso | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 || echo "latest")
       TARGETS+=("$tag|$item")
+    elif [ -n "${ASTRA_CLOUD_URL:-${MAILRU_PUBLIC_URL:-}}" ]; then
+      TARGETS+=("$item|$item")
     else
       log_warn "File '$item' not found, skipping."
     fi
@@ -171,11 +173,24 @@ elif [ -f "$RELEASES_FILE" ]; then
 fi
 
 if [ ${#TARGETS[@]} -eq 0 ]; then
-  log_error "Neither populated $RELEASES_FILE nor valid CLI ISO arguments were provided!"
-  echo "Example usage:"
-  echo "  $0 /path/to/astra-installation.iso"
-  echo "  $0 --preset minimal /path/to/astra-installation.iso"
-  exit 1
+  if [ -n "${ASTRA_CLOUD_URL:-${MAILRU_PUBLIC_URL:-}}" ]; then
+    log_info "releases.txt is empty, but ASTRA_CLOUD_URL is set. Auto-discovering releases from Cloud..."
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "$SCRIPT_DIR/discover_cloud_releases.py" ]; then
+      python3 "$SCRIPT_DIR/discover_cloud_releases.py" --populate-releases "$RELEASES_FILE"
+      if [ -f "$RELEASES_FILE" ]; then
+        while read -r tag url || [ -n "$tag" ]; do
+          [[ -z "$tag" || "$tag" =~ ^# ]] && continue
+          TARGETS+=("$tag|$url")
+        done < "$RELEASES_FILE"
+      fi
+    fi
+  fi
+fi
+
+if [ ${#TARGETS[@]} -eq 0 ]; then
+  log_warn "Neither populated $RELEASES_FILE nor valid CLI ISO arguments were provided. Nothing to build."
+  exit 0
 fi
 
 echo -e "${C_BOLD}==============================================================================${C_RESET}"
