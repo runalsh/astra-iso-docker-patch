@@ -448,20 +448,20 @@ EOF_APTLIST
       SERVER_PKGS+=("${ADDS[@]}")
     fi
 
-    log_exec "apt-get install -y --no-install-recommends ${SERVER_PKGS[*]}"
+    log_exec "apt-get install -y ${SERVER_PKGS[*]}"
     s chroot "$ROOTFS_DIR" env DEBIAN_FRONTEND=noninteractive LC_ALL=C \
-      apt-get install -y -qq --no-install-recommends "${SERVER_PKGS[@]}" || {
+      apt-get install -y -qq "${SERVER_PKGS[@]}" || {
         log_warn "Some non-essential packages failed, installing available server utilities individually..."
         for p in "${SERVER_PKGS[@]}"; do
           s chroot "$ROOTFS_DIR" env DEBIAN_FRONTEND=noninteractive LC_ALL=C \
-            apt-get install -y -qq --no-install-recommends "$p" 2>/dev/null || true
+            apt-get install -y -qq "$p" 2>/dev/null || true
         done
       }
   elif [ -n "$EXTRA_INCLUDE_PKGS" ]; then
     log_step "Installing user-specified packages: ${EXTRA_INCLUDE_PKGS}"
     IFS=',' read -ra ADDS <<< "$EXTRA_INCLUDE_PKGS"
     s chroot "$ROOTFS_DIR" env DEBIAN_FRONTEND=noninteractive LC_ALL=C \
-      apt-get install -y -qq --no-install-recommends "${ADDS[@]}"
+      apt-get install -y -qq "${ADDS[@]}"
   fi
 
   # Generate and configure system locales
