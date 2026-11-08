@@ -17,3 +17,4 @@
 1.8.4 astra installation-1.8.4.48-30.10.25_09.18-di.iso
 1.8.5 astra installation-1.8.5.46-11.02.26_01.30-di.iso
 1.8.6 astra installation-1.8.6.39-17.06.2026_11.39-di.iso
+1.8.7 astra installation-1.8.7.65-27.10.2026_12.17.iso
